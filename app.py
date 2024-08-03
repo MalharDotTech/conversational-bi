@@ -16,8 +16,6 @@ from vanna_calls import (
     remove_training_data
 )
 
-avatar_url = "./themlco_logo.jpeg"
-
 st.set_page_config(layout="wide")
 
 st.sidebar.title("Output Settings")
@@ -65,7 +63,7 @@ def set_question(question):
     st.session_state["my_question"] = question
 
 assistant_message_suggested = st.chat_message(
-    "assistant", avatar=avatar_url
+    "assistant" 
 )
 if assistant_message_suggested.button("Click to show suggested questions"):
     st.session_state["my_question"] = None
