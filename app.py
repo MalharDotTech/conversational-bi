@@ -58,9 +58,6 @@ if train_data:
             result = remove_training_data(id_to_remove)
             st.success(result)
 
-st.sidebar.button("Reset", on_click=lambda: set_question(None), use_container_width=True)
-
-
 st.title("💬 Conversational BI 📊 ")
 # st.sidebar.write(st.session_state)
 
@@ -81,32 +78,54 @@ if assistant_message_suggested.button("Click to show suggested questions"):
             args=(question,),
         )
 
-my_question = st.session_state.get("my_question", default=None)
+# Initialize conversation history in session state if it doesn't exist
+if "conversation_history" not in st.session_state:
+    st.session_state.conversation_history = []
 
-if my_question is None:
-    my_question = st.chat_input(
-        "Ask me a question about your data",
-    )
-
-if my_question:
-    st.session_state["my_question"] = my_question
+# Display all previous conversations and responses
+for conversation in st.session_state.conversation_history:
     user_message = st.chat_message("user")
-    user_message.write(f"{my_question}")
+    user_message.write(conversation["question"])
+    
+    for response in conversation["responses"]:
+        assistant_message = st.chat_message("assistant", avatar=avatar_url)
+        if response["type"] == "sql":
+            assistant_message.code(response["content"], language="sql", line_numbers=True)
+        elif response["type"] == "table":
+            assistant_message.dataframe(response["content"])
+        elif response["type"] == "chart":
+            assistant_message.plotly_chart(response["content"])
+        elif response["type"] == "summary":
+            assistant_message.text(response["content"])
+        elif response["type"] == "followup":
+            assistant_message.text("Here are some possible follow-up questions")
+            for question in response["content"][:5]:
+                assistant_message.button(question, on_click=set_question, args=(question,))
 
-    sql = generate_sql_cached(question=my_question)
+# Get new question from chat input
+new_question = st.chat_input("Ask me a question about your data")
+
+if new_question:
+    # Process the new question
+    user_message = st.chat_message("user")
+    user_message.write(f"{new_question}")
+
+    # Initialize a new conversation entry
+    current_conversation = {"question": new_question, "responses": []}
+
+    sql = generate_sql_cached(question=new_question)
 
     if sql:
         if is_sql_valid_cached(sql=sql):
             if st.session_state.get("show_sql", True):
-                assistant_message_sql = st.chat_message(
-                    "assistant", avatar=avatar_url
-                )
+                assistant_message_sql = st.chat_message("assistant", avatar=avatar_url)
                 assistant_message_sql.code(sql, language="sql", line_numbers=True)
+                current_conversation["responses"].append({"type": "sql", "content": sql})
             if auto_train:
                 assistant_message = st.chat_message( "assistant", avatar=avatar_url )
                 assistant_message.write("Were the reports correct ?, Add this to Training Data" )
                 if assistant_message.button("Add this to Training Data"):
-                    training_result = add_conversation_to_training(my_question, sql)
+                    training_result = add_conversation_to_training(new_question, sql)
                     st.sidebar.success(training_result)
         else:
             assistant_message = st.chat_message(
@@ -132,10 +151,11 @@ if my_question:
                     assistant_message_table.dataframe(df.head(10))
                 else:
                     assistant_message_table.dataframe(df)
+                current_conversation["responses"].append({"type": "table", "content": df.head(10) if len(df) > 10 else df})
 
-            if should_generate_chart_cached(question=my_question, sql=sql, df=df):
+            if should_generate_chart_cached(question=new_question, sql=sql, df=df):
 
-                code = generate_plotly_code_cached(question=my_question, sql=sql, df=df)
+                code = generate_plotly_code_cached(question=new_question, sql=sql, df=df)
 
                 if st.session_state.get("show_plotly_code", False):
                     assistant_message_plotly_code = st.chat_message(
@@ -155,6 +175,7 @@ if my_question:
                         fig = generate_plot_cached(code=code, df=df)
                         if fig is not None:
                             assistant_message_chart.plotly_chart(fig)
+                            current_conversation["responses"].append({"type": "chart", "content": fig})
                         else:
                             assistant_message_chart.error("I couldn't generate a chart")
 
@@ -163,30 +184,31 @@ if my_question:
                     "assistant",
                     avatar=avatar_url,
                 )
-                summary = generate_summary_cached(question=my_question, df=df)
+                summary = generate_summary_cached(question=new_question, df=df)
                 if summary is not None:
                     assistant_message_summary.text(summary)
+                    current_conversation["responses"].append({"type": "summary", "content": summary})
 
-            if st.session_state.get("show_followup", True):
-                assistant_message_followup = st.chat_message(
-                    "assistant",
-                    avatar=avatar_url,
-                )
-                followup_questions = generate_followup_cached(
-                    question=my_question, sql=sql, df=df
-                )
-                st.session_state["df"] = None
+                if st.session_state.get("show_followup", True):
+                    assistant_message_followup = st.chat_message("assistant", avatar=avatar_url)
+                    followup_questions = generate_followup_cached(question=new_question, sql=sql, df=df)
+                    if len(followup_questions) > 0:
+                        assistant_message_followup.text("Here are some possible follow-up questions")
+                        for question in followup_questions[:5]:
+                            assistant_message_followup.button(question, on_click=set_question, args=(question,))
+                        current_conversation["responses"].append({"type": "followup", "content": followup_questions[:5]})
 
-                if len(followup_questions) > 0:
-                    assistant_message_followup.text(
-                        "Here are some possible follow-up questions"
-                    )
-                    # Print the first 5 follow-up questions
-                    for question in followup_questions[:5]:
-                        assistant_message_followup.button(question, on_click=set_question, args=(question,))
+            # Add the current conversation to the history
+            st.session_state.conversation_history.append(current_conversation)
 
+        else:
+            assistant_message = st.chat_message("assistant", avatar=avatar_url)
+            assistant_message.write(sql)
     else:
-        assistant_message_error = st.chat_message(
-            "assistant", avatar=avatar_url
-        )
+        assistant_message_error = st.chat_message("assistant", avatar=avatar_url)
         assistant_message_error.error("I wasn't able to generate SQL for that question")
+
+if st.sidebar.button("Reset"):
+    st.session_state.conversation_history = []
+    st.session_state.df = None
+    st.experimental_rerun()
