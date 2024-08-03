@@ -105,12 +105,9 @@ if my_question:
             if auto_train:
                 assistant_message = st.chat_message( "assistant", avatar=avatar_url )
                 assistant_message.write("Were the reports correct ?, Add this to Training Data" )
-                if (yes := assistant_message.button("Yes")) or (no := assistant_message.button("No")):
-                    if yes: 
-                        training_result = add_conversation_to_training(my_question, sql)
-                        st.sidebar.success(training_result)
-                    if no:
-                        pass
+                if assistant_message.button("Add this to Training Data"):
+                    training_result = add_conversation_to_training(my_question, sql)
+                    st.sidebar.success(training_result)
         else:
             assistant_message = st.chat_message(
                 "assistant", avatar=avatar_url
