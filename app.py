@@ -18,7 +18,7 @@ from vanna_calls import (
     generate_and_connect_new_db,
     switch_model
 )
-
+from streamlit_mic_recorder import speech_to_text
 
 st.set_page_config(layout="wide")
 
@@ -28,6 +28,14 @@ st.sidebar.checkbox("Show Table", value=True, key="show_table")
 st.sidebar.checkbox("Show Chart", value=True, key="show_chart")
 st.sidebar.checkbox("Show Summary", value=True, key="show_summary")
 st.sidebar.checkbox("Show Follow-up Questions", value=False, key="show_followup")
+st.sidebar.title("Database and Model Settings")
+model_options = ["ibm_acc", "sales_model"]
+selected_model = st.sidebar.selectbox("Select Model", model_options, key="model_selector")
+
+if selected_model != st.session_state.get("current_model"):
+    switch_model(selected_model)
+    st.rerun()
+
 st.sidebar.title("Training Mode Toggle")
 auto_train = st.sidebar.toggle("Add Conversation To Train Toggle", value=False)
 st.sidebar.title("Training Data Management")
@@ -59,14 +67,6 @@ if train_data:
         if st.button("Remove Training Data"):
             result = remove_training_data(id_to_remove)
             st.success(result)
-
-st.sidebar.title("Database and Model Settings")
-model_options = ["ibm_acc", "sales_model"]
-selected_model = st.sidebar.selectbox("Select Model", model_options, key="model_selector")
-
-if selected_model != st.session_state.get("current_model"):
-    switch_model(selected_model)
-    st.rerun()
 
 #    use_custom_db = st.sidebar.checkbox("Use Custom Database")
 #
@@ -118,18 +118,23 @@ for conversation in st.session_state.conversation_history:
             for question in response["content"][:5]:
                 assistant_message.button(question, on_click=set_question, args=(question,))
 
-# Get new question from chat input
-new_question = st.chat_input("Ask me a question about your data")
+# Get new question from chat input or speech-to-text
+col1, col2 = st.columns([3, 1])
+with col1:
+    new_question = st.chat_input("Ask me a question about your data")
+with col2:
+    speech_input = speech_to_text(start_prompt="🎤 Voice",stop_prompt="🟥 Stop",language='en', use_container_width=False, just_once=True, key='STT')
 
-if new_question:
+if new_question or speech_input:
+    question = speech_input if speech_input else new_question
     # Process the new question
     user_message = st.chat_message("user")
-    user_message.write(f"{new_question}")
+    user_message.write(f"{question}")
 
     # Initialize a new conversation entry
-    current_conversation = {"question": new_question, "responses": []}
+    current_conversation = {"question": question, "responses": []}
 
-    sql = generate_sql_cached(question=new_question)
+    sql = generate_sql_cached(question=question)
 
     if sql:
         if is_sql_valid_cached(sql=sql):
@@ -141,7 +146,7 @@ if new_question:
                 assistant_message = st.chat_message("assistant")
                 assistant_message.write("Were the reports correct ?, Add this to Training Data" )
                 if assistant_message.button("Add this to Training Data"):
-                    training_result = add_conversation_to_training(new_question, sql)
+                    training_result = add_conversation_to_training(question, sql)
                     st.sidebar.success(training_result)
         else:
             assistant_message = st.chat_message("assistant")
@@ -164,9 +169,9 @@ if new_question:
                     assistant_message_table.dataframe(df)
                 current_conversation["responses"].append({"type": "table", "content": df.head(10) if len(df) > 10 else df})
 
-            if should_generate_chart_cached(question=new_question, sql=sql, df=df):
+            if should_generate_chart_cached(question=question, sql=sql, df=df):
 
-                code = generate_plotly_code_cached(question=new_question, sql=sql, df=df)
+                code = generate_plotly_code_cached(question=question, sql=sql, df=df)
 
                 if st.session_state.get("show_plotly_code", False):
                     assistant_message_plotly_code = st.chat_message("assistant")
@@ -186,14 +191,14 @@ if new_question:
 
             if st.session_state.get("show_summary", True):
                 assistant_message_summary = st.chat_message("assistant")
-                summary = generate_summary_cached(question=new_question, df=df)
+                summary = generate_summary_cached(question=question, df=df)
                 if summary is not None:
                     assistant_message_summary.text(summary)
                     current_conversation["responses"].append({"type": "summary", "content": summary})
 
                 if st.session_state.get("show_followup", True):
                     assistant_message_followup = st.chat_message("assistant")
-                    followup_questions = generate_followup_cached(question=new_question, sql=sql, df=df)
+                    followup_questions = generate_followup_cached(question=question, sql=sql, df=df)
                     if len(followup_questions) > 0:
                         assistant_message_followup.text("Here are some possible follow-up questions")
                         for question in followup_questions[:5]:
