@@ -13,13 +13,17 @@ from vanna_calls import (
     generate_summary_cached,
     add_training_data,
     get_training_data,
-    remove_training_data
+    remove_training_data,
+    generate_basic_questions,
+    generate_and_connect_new_db,
+    switch_model
 )
+
 
 st.set_page_config(layout="wide")
 
 st.sidebar.title("Output Settings")
-st.sidebar.checkbox("Show SQL", value=True, key="show_sql")
+st.sidebar.checkbox("Show SQL", value=False, key="show_sql")
 st.sidebar.checkbox("Show Table", value=True, key="show_table")
 st.sidebar.checkbox("Show Chart", value=True, key="show_chart")
 st.sidebar.checkbox("Show Summary", value=True, key="show_summary")
@@ -56,15 +60,29 @@ if train_data:
             result = remove_training_data(id_to_remove)
             st.success(result)
 
+st.sidebar.title("Database and Model Settings")
+model_options = ["ibm_acc", "sales_model"]
+selected_model = st.sidebar.selectbox("Select Model", model_options, key="model_selector")
+
+if selected_model != st.session_state.get("current_model"):
+    switch_model(selected_model)
+    st.rerun()
+
+#    use_custom_db = st.sidebar.checkbox("Use Custom Database")
+#
+#    if use_custom_db:
+#        uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
+#        generate_and_connect_new_db(uploaded_file)
+#        basic_questions = generate_basic_questions()
+
 st.title("💬 Conversational BI 📊 ")
 # st.sidebar.write(st.session_state)
 
 def set_question(question):
     st.session_state["my_question"] = question
 
-assistant_message_suggested = st.chat_message(
-    "assistant" 
-)
+assistant_message_suggested = st.chat_message("assistant")
+
 if assistant_message_suggested.button("Click to show suggested questions"):
     st.session_state["my_question"] = None
     questions = generate_questions_cached()
@@ -86,7 +104,7 @@ for conversation in st.session_state.conversation_history:
     user_message.write(conversation["question"])
     
     for response in conversation["responses"]:
-        assistant_message = st.chat_message("assistant", avatar=avatar_url)
+        assistant_message = st.chat_message("assistant")
         if response["type"] == "sql":
             assistant_message.code(response["content"], language="sql", line_numbers=True)
         elif response["type"] == "table":
@@ -116,19 +134,17 @@ if new_question:
     if sql:
         if is_sql_valid_cached(sql=sql):
             if st.session_state.get("show_sql", True):
-                assistant_message_sql = st.chat_message("assistant", avatar=avatar_url)
+                assistant_message_sql = st.chat_message("assistant") 
                 assistant_message_sql.code(sql, language="sql", line_numbers=True)
                 current_conversation["responses"].append({"type": "sql", "content": sql})
             if auto_train:
-                assistant_message = st.chat_message( "assistant", avatar=avatar_url )
+                assistant_message = st.chat_message("assistant")
                 assistant_message.write("Were the reports correct ?, Add this to Training Data" )
                 if assistant_message.button("Add this to Training Data"):
                     training_result = add_conversation_to_training(new_question, sql)
                     st.sidebar.success(training_result)
         else:
-            assistant_message = st.chat_message(
-                "assistant", avatar=avatar_url
-            )
+            assistant_message = st.chat_message("assistant")
             assistant_message.write(sql)
             st.stop()
 
@@ -140,10 +156,7 @@ if new_question:
         if st.session_state.get("df") is not None:
             if st.session_state.get("show_table", True):
                 df = st.session_state.get("df")
-                assistant_message_table = st.chat_message(
-                    "assistant",
-                    avatar=avatar_url,
-                )
+                assistant_message_table = st.chat_message("assistant")
                 if len(df) > 10:
                     assistant_message_table.text("First 10 rows of data")
                     assistant_message_table.dataframe(df.head(10))
@@ -156,20 +169,14 @@ if new_question:
                 code = generate_plotly_code_cached(question=new_question, sql=sql, df=df)
 
                 if st.session_state.get("show_plotly_code", False):
-                    assistant_message_plotly_code = st.chat_message(
-                        "assistant",
-                        avatar=avatar_url,
-                    )
+                    assistant_message_plotly_code = st.chat_message("assistant")
                     assistant_message_plotly_code.code(
                         code, language="python", line_numbers=True
                     )
 
                 if code is not None and code != "":
                     if st.session_state.get("show_chart", True):
-                        assistant_message_chart = st.chat_message(
-                            "assistant",
-                            avatar=avatar_url,
-                        )
+                        assistant_message_chart = st.chat_message("assistant")
                         fig = generate_plot_cached(code=code, df=df)
                         if fig is not None:
                             assistant_message_chart.plotly_chart(fig)
@@ -178,17 +185,14 @@ if new_question:
                             assistant_message_chart.error("I couldn't generate a chart")
 
             if st.session_state.get("show_summary", True):
-                assistant_message_summary = st.chat_message(
-                    "assistant",
-                    avatar=avatar_url,
-                )
+                assistant_message_summary = st.chat_message("assistant")
                 summary = generate_summary_cached(question=new_question, df=df)
                 if summary is not None:
                     assistant_message_summary.text(summary)
                     current_conversation["responses"].append({"type": "summary", "content": summary})
 
                 if st.session_state.get("show_followup", True):
-                    assistant_message_followup = st.chat_message("assistant", avatar=avatar_url)
+                    assistant_message_followup = st.chat_message("assistant")
                     followup_questions = generate_followup_cached(question=new_question, sql=sql, df=df)
                     if len(followup_questions) > 0:
                         assistant_message_followup.text("Here are some possible follow-up questions")
@@ -200,13 +204,13 @@ if new_question:
             st.session_state.conversation_history.append(current_conversation)
 
         else:
-            assistant_message = st.chat_message("assistant", avatar=avatar_url)
+            assistant_message = st.chat_message("assistant")
             assistant_message.write(sql)
     else:
-        assistant_message_error = st.chat_message("assistant", avatar=avatar_url)
+        assistant_message_error = st.chat_message("assistant")
         assistant_message_error.error("I wasn't able to generate SQL for that question")
 
 if st.sidebar.button("Reset"):
     st.session_state.conversation_history = []
     st.session_state.df = None
-    st.experimental_rerun()
+    st.rerun()

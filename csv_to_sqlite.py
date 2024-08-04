@@ -26,16 +26,17 @@ def csv_to_sqlite(csv_file_path, db_file_path):
     conn.commit()
     conn.close()
 
-# Define argument parser
-parser = argparse.ArgumentParser(description='Convert a CSV file to a SQLite database.')
-parser.add_argument('csv_file', type=str, help='Path to the input CSV file')
-parser.add_argument('db_file', type=str, help='Path to the output SQLite database file')
+if __name__ == "__main__":
+    # Define argument parser
+    parser = argparse.ArgumentParser(description='Convert a CSV file to a SQLite database.')
+    parser.add_argument('csv_file', type=str, help='Path to the input CSV file')
+    parser.add_argument('db_file', type=str, help='Path to the output SQLite database file')
 
-# Parse command-line arguments
-args = parser.parse_args()
+    # Parse command-line arguments
+    args = parser.parse_args()
 
-# Ensure the database file exists before attempting conversion
-Path(args.db_file).touch()
+    # Ensure the database file exists before attempting conversion
+    Path(args.db_file).touch()
 
-# Convert CSV to SQLite using command-line arguments
-csv_to_sqlite(args.csv_file, args.db_file)
+    # Convert CSV to SQLite using command-line arguments
+    csv_to_sqlite(args.csv_file, args.db_file)

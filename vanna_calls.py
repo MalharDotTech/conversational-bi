@@ -1,14 +1,41 @@
 import streamlit as st
+from csv_to_sqlite import csv_to_sqlite
 from dotenv import load_dotenv
 from vanna.remote import VannaDefault
 import os
+import sqlite3
+import pandas as pd
 load_dotenv()
 
 @st.cache_resource(ttl=3600)
 def setup_vanna():
-    vn = VannaDefault(api_key=os.getenv("VANNA_API_KEY"), model='ibm_acc')
-    vn.connect_to_sqlite("./ibm_acc.database.sqlite")
+    if "current_model" not in st.session_state:
+        st.session_state.current_model = "ibm_acc"
+    
+    model_name = st.session_state.current_model
+    db_path = f"./{model_name}.database.sqlite"
+    
+    vn = VannaDefault(api_key=os.getenv("VANNA_API_KEY"), model=model_name)
+    vn.connect_to_sqlite(db_path)
     return vn
+
+def switch_model(model_name):
+    st.session_state.current_model = model_name
+    st.cache_resource.clear()
+    setup_vanna()
+
+@st.cache_data(show_spinner="Connecting Custom Database...")
+def generate_and_connect_new_db(uploaded_file,db_path="./ibm_acc.database.sqlite", model_name='ibm_acc'):
+    if uploaded_file is not None:
+        # Save the uploaded file temporarily
+        with open("temp.csv", "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        # Convert CSV to SQLite
+        db_path = "custom_db.sqlite"
+        csv_to_sqlite("temp.csv", db_path)
+        st.sidebar.success("Custom database created successfully!")
+    reset_model()
+    setup_vanna(db_path=db_path, model_name=model_name)
 
 @st.cache_data(show_spinner="Generating sample questions ...")
 def generate_questions_cached():
@@ -81,6 +108,13 @@ def remove_training_data(id):
     vn.remove_training_data(id=id)
     return f"Training data with ID {id} removed successfully!"
 
+@st.cache_data(show_spinner="Resetting model...")
+def reset_model():
+    vn = setup_vanna()
+    training_data = vn.get_training_data()
+    for item in training_data:
+        vn.remove_training_data(id=item['id'])
+    return "Model reset successfully. All training data removed."
 
 @st.cache_data(show_spinner="Adding conversation to training data...")
 def add_conversation_to_training(question: str, sql: str):
@@ -88,48 +122,12 @@ def add_conversation_to_training(question: str, sql: str):
     vn.train(question=question, sql=sql)
     return "Conversation added to training data successfully!"
 
+def generate_basic_questions(table_name="data"):
+    return [
+        f"What are the column names in the {table_name} table?",
+        f"Show me the first 5 rows of the {table_name} table.",
+        f"How many rows are in the {table_name} table?",
+        f"What are the unique values in each column of the {table_name} table?",
+        f"What is the data type of each column in the {table_name} table?"
+    ]
 
-'''
-# Add DDL statement
-add_training_data('ddl', """
-CREATE TABLE data (
-    countryCode INTEGER,
-    customerID TEXT,
-    PaperlessDate DATE,
-    invoiceNumber TEXT,
-    InvoiceDate DATE,
-    DueDate DATE,
-    InvoiceAmount DECIMAL(10,2),
-    Disputed TEXT,
-    SettledDate DATE,
-    PaperlessBill TEXT,
-    DaysToSettle INTEGER,
-    DaysLate INTEGER
-);
-""")
-
-# Add example SQL queries
-example_queries = [
-    "SELECT customerID, InvoiceAmount, InvoiceDate, DueDate FROM data LIMIT 10;",
-    "SELECT countryCode, COUNT(*) as invoice_count, AVG(InvoiceAmount) as avg_amount FROM data GROUP BY countryCode;",
-    "SELECT * FROM data WHERE Disputed = 'Yes' AND DaysLate > 0;",
-    "SELECT customerID, InvoiceDate, DueDate, SettledDate, julianday(SettledDate) - julianday(DueDate) as actual_days_to_settle FROM data WHERE SettledDate > DueDate;",
-    "SELECT PaperlessBill, COUNT(*) as bill_count, AVG(DaysToSettle) as avg_days_to_settle, AVG(DaysLate) as avg_days_late FROM data GROUP BY PaperlessBill;",
-    """
-    SELECT 
-        CASE 
-            WHEN DaysLate = 0 THEN 'On Time'
-            WHEN DaysLate BETWEEN 1 AND 7 THEN '1-7 Days Late'
-            WHEN DaysLate BETWEEN 8 AND 30 THEN '8-30 Days Late'
-            ELSE 'More than 30 Days Late'
-        END as payment_status,
-        COUNT(*) as invoice_count,
-        AVG(InvoiceAmount) as avg_invoice_amount
-    FROM data
-    GROUP BY payment_status;
-    """
-]
-
-for query in example_queries:
-    add_training_data('sql', query)
-'''
