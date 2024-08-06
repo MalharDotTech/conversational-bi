@@ -4,7 +4,7 @@
 set -e
 
 # Install portaudio19-dev and python-all-dev
-apt-get install -y portaudio19-dev python-all-dev
+sudo apt-get install -y portaudio19-dev python-all-dev
 
 # Install Python dependencies
 pip3 install --upgrade pip
