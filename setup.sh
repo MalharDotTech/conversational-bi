@@ -4,8 +4,8 @@
 set -e
 
 # Install Python 3.10 or 3.11
-sudo apt-get update
-sudo apt-get install -y python3.10 python3-pip || sudo apt-get install -y python3.11 python3-pip
+apt-get update
+apt-get install -y python3.11 python3-pip
 
 # Verify Python installation
 if ! command -v python3 &> /dev/null
@@ -15,7 +15,7 @@ then
 fi
 
 # Install portaudio19-dev and python-all-dev
-sudo apt-get install -y portaudio19-dev python-all-dev
+apt-get install -y portaudio19-dev python-all-dev
 
 # Install Python dependencies
 pip3 install --upgrade pip
