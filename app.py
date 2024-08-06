@@ -74,9 +74,10 @@ if train_data:
 #        uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 #        generate_and_connect_new_db(uploaded_file)
 #        basic_questions = generate_basic_questions()
+main_container = st.container()
 
-st.title("💬 Conversational BI 📊 ")
-# st.sidebar.write(st.session_state)
+input_container = st.container()
+
 
 def set_question(question):
     st.session_state["my_question"] = question
@@ -88,42 +89,47 @@ if assistant_message_suggested.button("Click to show suggested questions"):
     questions = generate_questions_cached()
     for i, question in enumerate(questions):
         time.sleep(0.05)
-        button = st.button(
-            question,
-            on_click=set_question,
-            args=(question,),
-        )
+        #button = st.button(
+        #    question,
+        #    on_click=set_question,
+        #    args=(question,),
+        #)
+        st.write(question)
 
 # Initialize conversation history in session state if it doesn't exist
 if "conversation_history" not in st.session_state:
     st.session_state.conversation_history = []
 
-# Display all previous conversations and responses
-for conversation in st.session_state.conversation_history:
-    user_message = st.chat_message("user")
-    user_message.write(conversation["question"])
-    
-    for response in conversation["responses"]:
-        assistant_message = st.chat_message("assistant")
-        if response["type"] == "sql":
-            assistant_message.code(response["content"], language="sql", line_numbers=True)
-        elif response["type"] == "table":
-            assistant_message.dataframe(response["content"])
-        elif response["type"] == "chart":
-            assistant_message.plotly_chart(response["content"])
-        elif response["type"] == "summary":
-            assistant_message.text(response["content"])
-        elif response["type"] == "followup":
-            assistant_message.text("Here are some possible follow-up questions")
-            for question in response["content"][:5]:
-                assistant_message.button(question, on_click=set_question, args=(question,))
+with main_container:
+    st.title("💬 Conversational BI 📊 ")
+    # st.sidebar.write(st.session_state)
+    # Display all previous conversations and responses
+    for conversation in st.session_state.conversation_history:
+        user_message = st.chat_message("user")
+        user_message.write(conversation["question"])
+        
+        for response in conversation["responses"]:
+            assistant_message = st.chat_message("assistant")
+            if response["type"] == "sql":
+                assistant_message.code(response["content"], language="sql", line_numbers=True)
+            elif response["type"] == "table":
+                assistant_message.dataframe(response["content"])
+            elif response["type"] == "chart":
+                assistant_message.plotly_chart(response["content"])
+            elif response["type"] == "summary":
+                assistant_message.markdown(f'**Summary**\n\n{response["content"]}')
+            elif response["type"] == "followup":
+                assistant_message.text("Here are some possible follow-up questions")
+                for question in response["content"][:5]:
+                    assistant_message.button(question, on_click=set_question, args=(question,))
 
-# Get new question from chat input or speech-to-text
-col1, col2 = st.columns([3, 1])
-with col1:
-    new_question = st.chat_input("Ask me a question about your data")
-with col2:
-    speech_input = speech_to_text(start_prompt="🎤 Voice",stop_prompt="🟥 Stop",language='en', use_container_width=False, just_once=True, key='STT')
+with input_container:
+    # Get new question from chat input or speech-to-text
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        new_question = st.chat_input("Ask me a question about your data")
+    with col2:
+        speech_input = speech_to_text(start_prompt="🎤 Voice",stop_prompt="🟥 Stop",language='en', use_container_width=False, just_once=True, key='STT')
 
 if new_question or speech_input:
     question = speech_input if speech_input else new_question
@@ -193,7 +199,7 @@ if new_question or speech_input:
                 assistant_message_summary = st.chat_message("assistant")
                 summary = generate_summary_cached(question=question, df=df)
                 if summary is not None:
-                    assistant_message_summary.text(summary)
+                    assistant_message_summary.markdown(f"**Summary:**\n\n{summary}")
                     current_conversation["responses"].append({"type": "summary", "content": summary})
 
                 if st.session_state.get("show_followup", True):
